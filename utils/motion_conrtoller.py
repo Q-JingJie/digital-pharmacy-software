@@ -14,8 +14,12 @@ X_RIGHT_OFFSET = 42                          #Offset value to center X right car
 
 X_MAX_TRAVEL = X_MAX - X_CARRIAGE_WIDTH     #Actual allowed travel distance, limited by the two carriages
 
+DEBUG = True
 
+
+#++++++++++++++ SERIAL COMMUNICATIONS +++++++++++++
 motion = serial_conn("COM10", 115200, 0.1, "Motion Controller") #Motion as a serial object
+#med_qr = serial_conn("COM1", 115200, 0.1, "Medicine QR Scannerr") #Motion as a serial object
 
 
 
@@ -127,7 +131,12 @@ def system_halt():    #On system halt, soft reset or reset is required to exit s
 
 #++++++++++++++ OPTIMIZERS +++++++++++++
 def collection_order(medicine_list_raw): #Start from bottom left
-    ##optimize medicine collection by creating a list. if multiple quantities are defined, add on to the list
+    medicine_list = []
+    medicine_list_sorted = sorted(medicine_list_raw, key=lambda x: (x[4], -x[3]))
+
+    for medicine in medicine_list_sorted:
+        for i in range(0, medicine[2]):
+            medicine_list.append([medicine[0], medicine[1], medicine[3], medicine[4], medicine[5]])
     return medicine_list
 
 
@@ -179,12 +188,12 @@ def collection(medicine_list_raw):
         x_right = x_left + X_CARRIAGE_WIDTH
         y = 0
         z = medicine[3]
-        print("Verifying medicine", index + 1, medicine[0], x_left, x_right, y, z, end=' ')        
+        print("Verifying medicine", index + 1, medicine[0], x_left, x_right, y, z, end=' ')
         result = stepper_set_position_optimized(x_left, x_right, y, z) 
         print(result)
 
         
-        #veification sequence
+        #veification sequence & image capturing
 
         
         #Move QR platfom to the next medicine location if possible, otherwise beside the collection platform. Moves collection platform to the medicine location 
@@ -258,16 +267,3 @@ def collection(medicine_list_raw):
     time.sleep(5)
     result = LED_enable(False)
     print("LED disabled", result)
-
-
-
-
-
-
-
-
-#["NAME", "UNIT", X_POSITION, Z_POSITION, Z_LIFT]
-medicine_list = [["Diphenhydramine", "bottle", 700, 0, 50],["Diphenhydramine", "bottle", 700, 0, 50],["Paracetamol", "blister", 700, 200, 0],["Plan B", "blister", 300, 600, 0],["Diphenhydramine", "bottle", 700, 0, 50],["Diphenhydramine", "bottle", 700, 0, 50],["Paracetamol", "blister", 700, 200, 0],["Plan B", "blister", 300, 600, 0], ["Diphenhydramine", "bottle", 700, 0, 50],["Diphenhydramine", "bottle", 700, 0, 50],["Paracetamol", "blister", 700, 200, 0],["Plan B", "blister", 300, 600, 0],["Diphenhydramine", "bottle", 700, 0, 50],["Paracetamol", "blister", 700, 200, 0],["Plan B", "blister", 300, 600, 0], ["Diphenhydramine", "bottle", 700, 0, 50],["Diphenhydramine", "bottle", 700, 0, 50],["Paracetamol", "blister", 700, 200, 0],["Plan B", "blister", 300, 600, 0],["Diphenhydramine", "bottle", 700, 0, 50],["Paracetamol", "blister", 700, 200, 0],["Plan B", "blister", 300, 600, 0], ["Diphenhydramine", "bottle", 700, 0, 50],["Diphenhydramine", "bottle", 700, 0, 50],["Paracetamol", "blister", 700, 200, 0],["Plan B", "blister", 300, 600, 0],["Diphenhydramine", "bottle", 700, 0, 50],["Paracetamol", "blister", 700, 200, 0],["Plan B", "blister", 300, 600, 0], ["Diphenhydramine", "bottle", 700, 0, 50],["Diphenhydramine", "bottle", 700, 0, 50],["Paracetamol", "blister", 700, 200, 0],["Plan B", "blister", 300, 600, 0],["Diphenhydramine", "bottle", 700, 0, 50],["Paracetamol", "blister", 700, 200, 0],["Plan B", "blister", 300, 600, 0], ["Diphenhydramine", "bottle", 700, 0, 50],["Diphenhydramine", "bottle", 700, 0, 50],["Paracetamol", "blister", 700, 200, 0],["Plan B", "blister", 300, 600, 0],["Diphenhydramine", "bottle", 700, 0, 50],["Paracetamol", "blister", 700, 200, 0],["Plan B", "blister", 300, 600, 0], ["Diphenhydramine", "bottle", 700, 0, 50],["Diphenhydramine", "bottle", 700, 0, 50],["Paracetamol", "blister", 700, 200, 0],["Plan B", "blister", 300, 600, 0],["Diphenhydramine", "bottle", 700, 0, 50],["Paracetamol", "blister", 700, 200, 0],["Plan B", "blister", 300, 600, 0], ["Diphenhydramine", "bottle", 700, 0, 50],["Diphenhydramine", "bottle", 700, 0, 50],["Paracetamol", "blister", 700, 200, 0],["Plan B", "blister", 300, 600, 0]]
-for i in range(0,20):
-    print("Cycle: ", i)
-    collection(medicine_list)
