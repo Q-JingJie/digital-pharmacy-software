@@ -1,0 +1,169 @@
+#-------------system config---------------------
+uart0.baud_rate                          921600
+second_usb_serial_enable                 false
+dfu_enable                               false
+msd_disable                              false
+pause_button_enable                      false	
+
+
+#-------------motor config----------------------
+extruder.E0.enable                       true
+extruder.E1.enable                       true
+
+
+#-------------steps per mm----------------------
+alpha_steps_per_mm                       160       #1/32: 160(20T)  106.66(30T)   [DRV8825]          Left Platform, X Axis                  
+beta_steps_per_mm                        160       #1/32: 160(20T)  106.66(30T)   [DRV8825]          Right Platform, X Axis
+gamma_steps_per_mm                       160       #1/32: 160(20T)                [DRV8825] * 2      Height, Z Axis
+extruder.E0.steps_per_mm                 160       #1/32: 160(20T)  106.66(30T)   [DRV8825]          Dispensing, Y Axis
+extruder.E1.steps_per_mm                 160       #1/32: 160(20T)  106.66(30T)   [DRV8825]          Spare
+
+#alpha_steps_per_mm                       80        #1/16: 80(20T)  53.33(30T)     [TMC2208]                             
+#beta_steps_per_mm                        80        #1/16: 80(20T)  53.33(30T)     [TMC2208]   
+#gamma_steps_per_mm                       80        #1/16: 80(20T)                 [TMC2208] * 2
+#extruder.E0.steps_per_mm                 80        #1/16: 80(20T)  53.33(30T)     [TMC2208]  
+#extruder.E1.steps_per_mm                 80        #1/16: 80(20T)  53.33(30T)     [TMC2208]  
+
+
+#-------------direction pin---------------------
+alpha_dir_pin                            2.3!      #[DRV8825]
+beta_dir_pin                             0.20      #[DRV8825]       
+gamma_dir_pin                            2.11!     #[DRV8825] * 2          
+extruder.E0.dir_pin                      0.11!     #[DRV8825]
+extruder.E1.dir_pin                      0.0!      #[DRV8825]
+
+#alpha_dir_pin                            2.3       #[TMC2208]
+#beta_dir_pin                             0.20!     #[TMC2208]         
+#gamma_dir_pin                            2.11      #[TMC2208] * 2          
+#extruder.E0.dir_pin                      0.11      #[TMC2208]
+#extruder.E1.dir_pin                      0.0       #[TMC2208]
+
+
+#-------------step pin--------------------------
+alpha_step_pin                           2.2
+beta_step_pin                            0.19
+gamma_step_pin                           0.22
+extruder.E0.step_pin                     2.13
+extruder.E1.step_pin                     0.1  
+
+
+#-------------enable pin-------------------------
+alpha_en_pin                             2.1
+beta_en_pin                              2.8
+gamma_en_pin                             0.21
+extruder.E0.en_pin                       2.12
+extruder.E1.en_pin                       0.10
+
+#-------------acceleration (mm/s^2)-------------- 
+acceleration                             2500
+
+alpha_acceleration                       2500
+beta_acceleration                        2500
+gamma_acceleration                       2500
+extruder.E0.acceleration                 2500
+extruder.E1.acceleration                 2500
+
+
+#-------------speed (mm/min)---------------------
+x_axis_max_speed                         20000      
+y_axis_max_speed                         20000       
+z_axis_max_speed                         20000    
+extruder.E0.max_speed	                 20000  
+extruder.E1.max_speed	                 20000
+
+
+#-------------endstop----------------------------
+endstops_enable                          true
+
+alpha_min_endstop                        1.29^! 
+beta_min_endstop                         1.27^!       
+gamma_min_endstop                        1.25^!
+
+alpha_max_travel                         700 
+beta_max_travel                          700
+gamma_max_travel                         750
+
+
+#-------------homing config-----------------------
+#endstop_debounce_count                  100
+#endstop_debounce_ms                     1
+
+move_to_origin_after_home                true
+home_z_first                             false
+
+alpha_homing_direction                   home_to_min
+beta_homing_direction                    home_to_min
+gamma_homing_direction                   home_to_min
+
+alpha_fast_homing_rate_mm_s              60
+beta_fast_homing_rate_mm_s               60
+gamma_fast_homing_rate_mm_s              60
+
+alpha_slow_homing_rate_mm_s              30
+beta_slow_homing_rate_mm_s               30
+gamma_slow_homing_rate_mm_s              30
+
+alpha_homing_retract_mm                  5
+beta_homing_retract_mm                   5
+gamma_homing_retract_mm                  5
+
+
+#-------------path planner-----------------------
+default_feed_rate                        10000           
+default_seek_rate                        10000
+extruder.E0.default_feed_rate            10000 
+extruder.E1.default_feed_rate            10000
+mm_per_arc_segment                       0.5
+mm_max_arc_error		         0.01
+junction_deviation                       0.05
+planner_queue_size                       32
+microseconds_per_step_pulse              2
+base_stepping_frequency                  100000
+acceleration_ticks_per_second            1000
+
+
+#-------------switch-----------------------------
+switch.fan.enable                         true
+switch.fan.input_on_command               M106
+switch.fan.input_off_command              M107
+switch.fan.output_pin                     2.4
+switch.fan.output_type                    pwm
+
+switch.pump.enable                        true
+switch.pump.input_on_command              M110
+switch.pump.input_off_command             M111
+switch.pump.subcode                       1
+switch.pump.output_pin                    2.7
+switch.pump.output_type                   pwm
+
+switch.led.enable                         true
+switch.led.input_on_command               M110
+switch.led.input_off_command              M111
+switch.led.subcode                        2
+switch.led.output_pin                     2.6
+switch.led.output_type                    pwm
+
+switch.xyz.enable                         true
+switch.xyz.input_on_command               M110
+switch.xyz.input_off_command              M111
+switch.xyz.subcode                        3
+switch.xyz.output_pin                     2.5
+switch.xyz.output_type                    pwm
+
+#-------------pwm servo----------------------------
+switch.servo1.enable                      true
+switch.servo1.input_on_command            M280
+switch.servo1.input_off_command           M281
+switch.servo1.subcode                     1
+switch.servo1.output_pin                  1.23
+switch.servo1.output_type                 hwpwm
+switch.servo1.pwm_period_ms               20   
+
+switch.servo2.enable                      true
+switch.servo2.input_on_command            M280
+switch.servo2.input_off_command           M281
+switch.servo2.subcode                     2
+switch.servo2.output_pin                  2.0
+switch.servo2.output_type                 hwpwm
+switch.servo2.pwm_period_ms               20   
+
