@@ -1,6 +1,8 @@
 from serial_conn import serial_conn
 from inventory import inventory
 import time
+import cv2
+import os
 
 #++++++++++++++ PHYSICAL CONSTRAINTS +++++++++++++
 X_MAX = 900                                 #Maxmium travel length on X axis
@@ -15,12 +17,16 @@ X_RIGHT_OFFSET = 42                          #Offset value to center X right car
 X_MAX_TRAVEL = X_MAX - X_CARRIAGE_WIDTH     #Actual allowed travel distance, limited by the two carriages
 
 DEBUG = True
-
+IMAGE_PATH = "C:/Users/Janson/Desktop/Capture"
 
 #++++++++++++++ SERIAL COMMUNICATIONS +++++++++++++
 motion = serial_conn("COM10", 115200, 0.1, "Motion Controller") #Motion as a serial object
-#med_qr = serial_conn("COM1", 115200, 0.1, "Medicine QR Scannerr") #Motion as a serial object
+med_qr = serial_conn("COM2", 115200, 0.1, "Medicine QR Scannerr") #Motion as a serial object
 
+
+capture = cv2.VideoCapture(0)
+capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
 
 #++++++++++++++ MOTION +++++++++++++
@@ -170,6 +176,27 @@ def stepper_set_position_optimized(x_left, x_right, y, z): #optimize X_left and 
 
 
 
+#++++++++++++++ VERIFICATION AND IMAGING +++++++++++++
+def verification (medicine_name, timeout):
+    done = False
+    start = time.time()
+    
+    while done == False:
+        if med_qr.read() == medicine_name:
+            done = True
+            return True
+
+        if (time.time() - start) > timeout:
+            done = True
+    return False
+
+def image(medicine_name):
+    ret, frame = capture.read()
+    return cv2.imwrite(os.path.join(IMAGE_PATH, time.strftime("%Y%m%d_%H%M%S_") + medicine_name + ".png"), frame)
+
+
+
+    
 #++++++++++++++ COLLECTION +++++++++++++
 def collection(medicine_list_raw):
     #stepper_home_position()
@@ -194,6 +221,9 @@ def collection(medicine_list_raw):
 
         
         #veification sequence & image capturing
+        result = verification(medicine[0],5)
+        print("Medicine", medicine[0],"verified" , result)
+        print(image(medicine[0]))
 
         
         #Move QR platfom to the next medicine location if possible, otherwise beside the collection platform. Moves collection platform to the medicine location 
