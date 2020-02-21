@@ -1,292 +1,449 @@
-#!/usr/bin/ python3
-# -*- coding: utf-8 -*-
-
-from flask import Flask, request, jsonify
-from OTCdb import OTCconnection
-from Prescriptiondb import Prescriptionconnection
-from Userdb import Userconnection
-import gc
+import time
+from serial_conn import serial_conn
+from flask import Flask,jsonify,request
+from flask_cors import CORS, cross_origin
+import sqlite3
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import smtplib
-from flask_cors import CORS, cross_origin
-from email.mime.base import MIMEBase 
-from email import encoders 
-#from flask import app
+import random
+from playsound import playsound
+import threading
+from email import encoders
+from email.mime.base import MIMEBase
+from motion_controller import collection
 
 
+user_qr = serial_conn("COM3", 115200, 0.2, "User QR Scanner")
+random.seed(0)
+
+db_location = r'C:\Users\DP\Desktop\FlaskApp\pythonsqlite.db'
+#db_location = r'C:\Users\Kan Chee Kong\Desktop\FlaskApp1\pythonsqlite.db'
 app = Flask(__name__)
 CORS(app, support_credentials=True)
 
 
-MedicineDict = {"Diphenhydramine":{"Diphenhydramine is an antihistamine that dries up secretions. It reduces sputum production and expands the bronchial air passages":"Diphenhydramine 是一种抗过敏药，能使气管里的分泌物变干。它能疝少痍的产生．并有扩张支气管的作用"}}
+#initialise the medication location
+med_location = {}
+med_location['Diphenhydramine'] = ['bottle',518,0]
+med_location['MedicineB'] = ["blister",152, 235]
+med_location['MedicineC'] = ["blister",250, 235]
+med_location['MedicineD'] = ["blister",333, 235]
+med_location['MedicineE'] = ["blister",425, 235]
+med_location['MedicineF'] = ["blister",512, 235]
 
 
-# information leaflets
-files = ['Diphenhydramine.pdf','Insulin.pdf']
+
+
+#medicine_list = [["Diphenhydramine", "box", 1 , 465, 0]]
+#             ["Diphenhydramine", "blister", 1 , 152, 235],
+#             ["Diphenhydramine", "blister", 1 , 250, 235],
+#             ["Diphenhydramine", "blister", 1 , 333, 235],
+#             ["Diphenhydramine", "blister", 1 , 425, 235],
+#             ["Diphenhydramine", "blister", 1 , 512, 235]]
 
 
 
-@app.route('/PrescriptionMed/' , methods=["GET","POST"])
-def PrescriptionMed():
-        medicine_data = request.get_json() # Get the user input/qr code from react
-                                           # Expecting NRIC and language information from react
-                                           
-        if medicine_data: 
-            c, conn = Userconnection()  # connect to User Medicine database(DB)
-            c.execute("select * from users where NRIC = '{}'".format(medicine_data['nric'].upper()))
-            medicine_list = c.fetchall() 
-            c.close()
-            conn.close()
-            gc.collect()
-            
-            
-            # # connect to User Medicine database(DB) for available stock and price
-            c, conn = Prescriptionconnection()  
-            c.execute("select * from stocklist")
-            medicine_stock = c.fetchall() 
-            c.close()
-            conn.close()
-            gc.collect()
-            
-            
-            medicines = []
-            
-            
-            if medicine_list: # check there data in medicine_list 
-                #pass the medicine data from database to react
-                for medicine in medicine_list:
-                    medicines.append({'NRIC': medicine[1], 'MedA' : medicine[2], 'MedB' : medicine[3] })
-            
-                if medicine_stock:
-                    for medicine in medicine_stock:
-                        medicines.append({'MedAStock':medicine[1], 'MedAPrice':medicine[2], 'MedBStock':medicine[3], 'MedBPrice':medicine[4]})
-            
-            # pass the medication description to react
-                if medicine_data['language'].lower() == 'en': # if the language is english
-                    for key, value in MedicineDict.items():
-                        if key =='Diphenhydramine': # for now there only 1 medicine description
-                            for k,v in value.items():
-                                medicines.append({'Diphenhydramine':k})
-                
-                if medicine_data['language'].lower() == 'ch': # if the language is chinese
-                    for key, value in MedicineDict.items():
-                        if key =='Diphenhydramine': # for now there only 1 medicine description
-                            for k,v in value.items():
-                                medicines.append({'Diphenhydramine':v})
-       
-            return jsonify({'medicines' : medicines}) # pass the josn data to React 
-        return('None')
-    
-     
-@app.route('/OTCMedicine/')
-@cross_origin(supports_credentials=True)
-def OTCMedicine():
-    # connect to OTC database(DB)
-    c, conn = OTCconnection()
-    c.execute("select * from stocklist")
-    medicine_list = c.fetchall() 
-    c.close()
+
+
+@app.route('/startingpage/' , methods=["GET","POST"])
+def startingpage():
+    #time.sleep(1)
+    playsound(r'C:\Users\DP\Desktop\FlaskApp\silence.mp3') 
+    playsound(r'C:\Users\DP\Desktop\FlaskApp\welcome.mp3') # need change address
+    return jsonify('True')
+
+@app.route('/management/' , methods=["GET","POST"])
+def management():
+    conn = sqlite3.connect(db_location) # need change file location
+    cursor = conn.execute("SELECT * from otcmedicine")
+    medicine_list = cursor.fetchall()   
+
+
+    c = conn.execute("SELECT * from prescriptionstock")
+    medicine_stock = c.fetchall()
     conn.close()
-    gc.collect()
-    
     medicines = []
     # Get all the available medicine from DB to react
     for medicine in medicine_list:
-        medicines.append({'Name': medicine[1], 'Stock' : medicine[2], 'Price' : medicine[3]})
+    #    medicines.append({'Name': medicine[1], 'Stock' : medicine[2], 'Price' : medicine[3]})
+         medicines.append({'id': medicine[0], 'name' : medicine[1], 'stock' : medicine[2], 'brand': medicine[6]})
+
+    for medicine in medicine_stock:
+        medicines.append({'id': medicine[0], 'name' : medicine[1], 'stock' : medicine[4], 'brand': medicine[2]})
+
     return jsonify({'medicines' : medicines})
 
 
 
-def message(num):
-    file = files[num]
+@app.route('/updatemaindb/' , methods=["GET","POST"])
+def updatemaindb():
+    updatemed = request.get_json()
+    print(updatemed)
+    conn = sqlite3.connect(db_location) # need change file location
+    
+    try:
+        for item in (updatemed["medicines"]):
+            if 'p' not in str(item['id']):
+                sql_update_query = ("update otcmedicine SET medicinestock = {} where medid = {}".format(item['stock'], item['id']))
+                conn.execute(sql_update_query)       
+                conn.commit()
+            else:
+                sql_update_query = ("update prescriptionstock SET PMedStock = {} where medid = '{}'".format(item['stock'], item['id']))
+                conn.execute(sql_update_query)       
+                conn.commit()
+                
+    except Exception as e:
+        print(e)
+        return jsonify('false')
+            
+    return jsonify('done')
+                    
+ 
+# generate security code
+@app.route('/securitycode/' , methods=["GET","POST"])
+def securitycode():
+    global securityCode
+    securityCode = random.randint(100000,999999)
+    title = 'Security Code'
+    fromaddr = "digitalpharmacy1@gmail.com"
+    toaddr = "digitalpharmacy1@gmail.com"
+    msg = MIMEMultipart()
+    msg['From'] = fromaddr
+    msg['To'] = toaddr
+    msg['Subject'] = title
+
+    body = "Your OTP is {}. Use it within 1 minutes before it expires.".format(securityCode)
+    msg.attach(MIMEText(body, 'plain'))
+
+
+    server = smtplib.SMTP('smtp.gmail.com', 587)
+    server.ehlo()
+    server.starttls()
+    server.ehlo()
+    server.login("digitalpharmacy1@gmail.com", "Pharmacy1920")
+    text = msg.as_string()
+    server.sendmail(fromaddr, toaddr, text)
+    server.quit()
+    return jsonify('True')
+    
+
+@app.route('/flushqr/' , methods=["GET","POST"])
+def flushqr():
+    while user_qr.read() != '':
+        pass
+    return jsonify('True')
+
+
+
+
+
+# 2FA verification
+@app.route('/PrescriptionMed/' , methods=["GET","POST"])
+def PrescriptionMed():
+    pin = request.get_json()
+    FA = []
+    for i in range(len(str(securityCode))):
+        FA.append(int(str(securityCode)[i]))
+    print(FA, pin)
+    if FA == pin:
+        return jsonify('True')
+    else:
+       return jsonify('Wrong code')
+
+
+
+
+@app.route('/qrcode/' , methods=["GET","POST"])
+def qrcode():
+    time.sleep(1)
+    start_scanning = request.get_json()
+    print(start_scanning)
+    global qr
+    try: 
+         if start_scanning['qr']:
+             print('scanning now')            
+             qr = ''            
+             while (qr == ''):
+                qr = user_qr.read()
+             print (qr)
+             playsound(r'C:\Users\DP\Desktop\FlaskApp\silence.mp3')  # need change location'
+             playsound(r'C:\Users\DP\Desktop\FlaskApp\beep2.mp3') 
+             if qr.strip() == 'Diclofenac Sodium 25mg':
+                print('management page')              
+                return jsonify('manage')
+             elif qr != '':
+                 print('QR code detected')
+                 return jsonify('True')
+             else:
+                return jsonify('error')
+    except Exception as e:
+         print(e)
+         return jsonify('false')
+    
+
+
+@app.route('/PMed/' , methods=["GET","POST"])
+def PMed():
+    #qr = 'XXX'
+    try:
+        conn = sqlite3.connect(db_location)
+        cursor = conn.execute("SELECT * from prescriptionmed where nric = '{}'".format(qr.strip()))
+        medicine_list = cursor.fetchall()   
+
+        c = conn.execute("SELECT * from prescriptionstock")
+        medicine_stock = c.fetchall()
+        conn.close()
+
+        medicines = []
+        med = {}
+        med['NRIC'] = medicine_list[0][1]
+        medlist = {}
+
+        for i in range(len(medicine_list)):
+            for j in range(len(medicine_stock)):
+                if (medicine_list[i][2] == medicine_stock[j][0]):
+                    medlist["dbid"] = medicine_list[i][0]
+                    medlist["id"] = medicine_list[i][2]
+                    medlist["name"] = medicine_stock[j][1]
+                    medlist["brand"] = medicine_stock[j][2]
+                    medlist["description"] = medicine_stock[j][3]
+                    medlist["stock"] = medicine_stock[j][4]
+                    medlist["price"] = medicine_stock[j][5]
+                    medlist["qty"] = medicine_list[i][3]
+                    medicines.append(medlist)
+                    medlist = {}
+
+        med["medicine"] = medicines
+        return jsonify({'medicines' : med})
+        
+    except Exception as e:
+        print(e)
+        return jsonify('Problem accessing database')
+
+
+
+
+def Pdb(medid, data):
+    conn = sqlite3.connect(db_location)
+    cursor = conn.execute("SELECT * from prescriptionmed where DBid = '{}'".format(medid)) # need change
+    medicine_list = cursor.fetchall()    #data from database
+    medstock = int(medicine_list[0][3]) - int(data)
+    return(medstock)
+
+
+def Pstock(medname, data):
+    conn = sqlite3.connect(db_location)
+   # qr = 'XXX'
+    cursor = conn.execute("SELECT * from prescriptionstock where PmedName = '{}'".format(medname)) # need change
+    medicine_list = cursor.fetchall()    #data from database
+    medstock = int(medicine_list[0][4]) - int(data)
+    return(medstock)
+
+def message(med):
+    extension = '.pdf'
+    file = 'Diphenhydramine.pdf'
+    #file = med +extension
     filename = file
-    attachment = app.open_resource(file, "rb") 
+    attachment = open(file, "rb") 
     
     p = MIMEBase('application', 'octet-stream') 
     p.set_payload((attachment).read()) 
     encoders.encode_base64(p) 
     p.add_header('Content-Disposition', "attachment; filename= %s" % filename) 
     return(p)
-
-
-@app.route('/updateDBPM/', methods=["GET","POST"])# update datebase for prescription med
-def updateDBPM():
-     medicine_data = request.get_json() # Get the data from react
-     # Expecting NRIC, email and quantity of medA and medB brought by customer
-     
-     try:
-         c, conn = Userconnection()   
-         c.execute("select * from users where NRIC = '{}'".format(medicine_data['nric'].upper()))
-         medicine_list = c.fetchall() 
-         c.close()
-         conn.close()
-         gc.collect()
-         
-         c, conn = Prescriptionconnection()  
-         c.execute("select * from stocklist")
-         medicine_stock = c.fetchall() 
-         c.close()
-         conn.close()
-         gc.collect()
-         
-         #for medicine in medicine_list:
-         medAstock = medicine_stock[0][1] - int(medicine_data['medA'])
-         medA = medicine_list[0][2] -  int(medicine_data['medA'])
-         medBstock = medicine_stock[0][3] - int(medicine_data['medB'])
-         medB = medicine_list[0][3] -  int(medicine_data['medB'])
-         
-
-         c, conn = Userconnection()   
-         sql_update_query = ("update users SET medA = {}, medB = {}, email = '{}' where NRIC = '{}'"
-                             .format(medA, medB, medicine_data['email'], medicine_data['nric']))
-         c.execute(sql_update_query)
-         conn.commit()
-         c.close()
-         conn.close()
-         gc.collect()
-         
-         c, conn = Prescriptionconnection() 
-         sql_update_query = ("update stocklist SET medAstock = {}, medBstock = {} where id = 1"
-                             .format(medAstock, medBstock))
-         c.execute(sql_update_query)
-         conn.commit()
-         c.close()
-         conn.close()
-         gc.collect()
-         
-            
-         # Send email to alert us when stock is low   
-         title = ''
-         if (medAstock <5 and medBstock<5):
-            title = 'Low stock for MedicineA and MedicineB'
-         elif medAstock <5:
-            title = 'Low stock for MedicineA'
-         elif medBstock <5:
-            title = 'Low stock for MedicineB'
-         if title !='':
-            fromaddr = "digitalpharmacy1@gmail.com"
-            toaddr = "digitalpharmacy1@gmail.com"
-            msg = MIMEMultipart()
-            msg['From'] = fromaddr
-            msg['To'] = toaddr
-            msg['Subject'] = title
     
-            body = "Low stock. Please replenish ASAP"
-            msg.attach(MIMEText(body, 'plain'))
+def Pemail(med):
+    fromaddr = "digitalpharmacy1@gmail.com"
+    toaddr = 'digitalpharmacy1@gmail.com'
+    msg = MIMEMultipart()
+    msg['From'] = fromaddr
+    msg['To'] = toaddr
+    msg['Subject'] = "Information leaflets"
     
     
-            server = smtplib.SMTP('smtp.gmail.com', 587)
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login("digitalpharmacy1@gmail.com", "Pharmacy1920")
-            text = msg.as_string()
-            server.sendmail(fromaddr, toaddr, text)
-            server.quit()
+    body = "Dear Sir or Madam,\nThanks for using GoMed\nPlease find attached information leaflets for your medications"
+    msg.attach(MIMEText(body, 'plain'))
+    
+    for item in med:
+        p = message(item)
+        msg.attach(p) 
+
+    server = smtplib.SMTP('smtp.gmail.com', 587)
+    server.ehlo()
+    server.starttls()
+    server.ehlo()
+    server.login("digitalpharmacy1@gmail.com", "Pharmacy1920")
+    text = msg.as_string()
+    server.sendmail(fromaddr, toaddr, text)
+    server.quit()  
+
+
+    
+@app.route('/updateDBPmed/', methods=["GET","POST"])# update datebase for OTC med
+def updateDBPmed():
+    medicine_data = request.get_json() # Get the data from react
+    print(medicine_data)  # debugging
+    # Expecting quantity of Medicine brought by customer
+    # test out later
+    
+    
+    brochure = []
+    medicine_list = []    
+    try:
+        cart = medicine_data["cart"]
+        conn = sqlite3.connect(db_location) 
+        for item in cart:
+            remainingstock = Pdb(item['dbid'], item['qty'])
+            sql_update_query = ("update prescriptionmed SET quantity = {} where DBid = {}".format(remainingstock, item['dbid']))
+            conn.execute(sql_update_query)       
+            conn.commit()
+
+            remainingstock = Pstock(item['name'], item['qty'])
+            sql_update_query = ("update prescriptionstock SET PMedStock = {} where PmedName = '{}'".format(remainingstock, item['name']))
+            conn.execute(sql_update_query)       
+            conn.commit()
             
-        
-        
-        # Send medications information leaflets to users                
-         fromaddr = "digitalpharmacy1@gmail.com"
-         toaddr = medicine_data['email']
-         msg = MIMEMultipart()
-         msg['From'] = fromaddr
-         msg['To'] = toaddr
-         msg['Subject'] = "Information leaflets"
-        
-        
-         body = "Dear Sir or Madam,\nThanks for using GoMed\nPlease find attached information leaflets for your medications"
-         msg.attach(MIMEText(body, 'plain'))
-        
-        
-         if int(medicine_data['medA'])!=0:
-            p = message(0)
-            msg.attach(p) 
-                
-         if int(medicine_data['medB'])!=0:
-            p = message(1)
-            msg.attach(p) 
+            brochure.append(item['name'])
             
-         server = smtplib.SMTP('smtp.gmail.com', 587)
-         server.ehlo()
-         server.starttls()
-         server.ehlo()
-         server.login("digitalpharmacy1@gmail.com", "Pharmacy1920")
-         text = msg.as_string()
-         server.sendmail(fromaddr, toaddr, text)
-         server.quit()  
             
-         return jsonify('Done')
-   
-     except Exception as e:
-        return ("error")
+            if int(remainingstock) < 15:
+                t2 = threading.Thread(target=StockEmail , args=(item['name'],))     
+                t2.start()                  
+            
+            
+                # call function to activate hardware
+            medicine_list.append([item['name'],med_location[item['name']][0],item['qty'],med_location[item['name']][1],med_location[item['name']][2]])
+        
+           
+        conn.close()
+        t3 = threading.Thread(target=Pemail , args=(brochure,))    
+        t3.start()         
+        collection(medicine_list)
+        t3.join()
+        
+        
+        
+        return jsonify('Done')
+    except Exception as e:
+         print(e)
+         return('error')
+        
+
+
+
+
+
+
+
+
+
+# list of all GSL medicine
+@app.route('/OTCMedicine/')
+@cross_origin(supports_credentials=True)
+def OTCMedicine():
+    # connect to OTC database(DB)
+    conn = sqlite3.connect(db_location) # need change file location
+    cursor = conn.execute("SELECT * from otcmedicine")
+    medicine_list = cursor.fetchall()   
+    conn.close()
+    
+    medicines = []
+    # Get all the available medicine from DB to react
+    for medicine in medicine_list:
+    #    medicines.append({'Name': medicine[1], 'Stock' : medicine[2], 'Price' : medicine[3]})
+         medicines.append({'id': medicine[0], 'name' : medicine[1], 'stock' : medicine[2], 'description': medicine[4], 'cost' : "{:.2f}".format(medicine[3]),
+         "pic": r"http://157.245.196.149/static/images/{}".format(medicine[5]), 'brand': medicine[6]})
+    
+
+    return jsonify({'medicines' : medicines})
+    
     
 
 
+# update GSL database after payment
 def otcdb(medid, data):
-    c, conn = OTCconnection()  
-    c.execute("select * from stocklist where id = {}".format(medid))
-    medicine_list = c.fetchall() #data from database
+    conn = sqlite3.connect(db_location)
+    cursor = conn.execute("SELECT * from otcmedicine where medid = {}".format(medid))
+    medicine_list = cursor.fetchall()    #data from database
     medstock = int(medicine_list[0][2]) - int(data)
     return(medstock)
-    
-    
+
+
+
+# email for low stock   
+def StockEmail(stock):
+     title = 'Low stock for {}'.format(stock)
+     fromaddr = "digitalpharmacy1@gmail.com"
+     toaddr = "digitalpharmacy1@gmail.com"
+     msg = MIMEMultipart()
+     msg['From'] = fromaddr
+     msg['To'] = toaddr
+     msg['Subject'] = title
+
+     body = "Low stock for {}. Please replenish ASAP".format(stock)
+     msg.attach(MIMEText(body, 'plain'))
+
+
+     server = smtplib.SMTP('smtp.gmail.com', 587)
+     server.ehlo()
+     server.starttls()
+     server.ehlo()
+     server.login("digitalpharmacy1@gmail.com", "Pharmacy1920")
+     text = msg.as_string()
+     server.sendmail(fromaddr, toaddr, text)
+     server.quit()
+
+
+@app.route('/paymentOTC/', methods=["GET","POST"])# update datebase for OTC med
+def paymentOTC():
+    time.sleep(5)
+    return jsonify('True')
+
+
+     
+# update stock for GSL medicine     
 @app.route('/updateDBOTC/', methods=["GET","POST"])# update datebase for OTC med
 def updateDBOTC():
     medicine_data = request.get_json() # Get the data from react
-    # Expecting quantity of MedicineA and MedicineB brought by customer
-    
+    # Expecting quantity of Medicine brought by customer
+    print(medicine_data)  # debugging
+    medicine_list = []    
     try:
-        MedicineAStock = otcdb(1,medicine_data['medicineA'])
-        MedicineBStock = otcdb(2,medicine_data['medicineB'])
-         
-    
-        c, conn = OTCconnection()  
-        sql_update_query = ("update stocklist SET medicinestock = {} where id = {}".format(MedicineAStock, 1))
-        c.execute(sql_update_query)
-        conn.commit()
-        sql_update_query = ("update stocklist SET medicinestock = {} where id = {}".format(MedicineBStock, 2))
-        c.execute(sql_update_query)
-        conn.commit()
-        c.close()
+        cart = medicine_data["cart"]
+        print(cart)
+        conn = sqlite3.connect(db_location) 
+        for item in cart:
+            remainingstock = otcdb(item['id'], item['quantity'])
+            sql_update_query = ("update otcmedicine SET medicinestock = {} where medid = {}".format(remainingstock, item['id']))
+            conn.execute(sql_update_query)       
+            conn.commit()
+            
+            
+            print('updated')  
+            
+            
+            if int(remainingstock) < 15:
+               #otcStockEmail(item['name'])
+               t4 = threading.Thread(target=StockEmail , args=(item['name'],))  
+               t4.start()
+            
+            medicine_list.append([item['name'],med_location[item['name']][0],item['quantity'],med_location[item['name']][1],med_location[item['name']][2]])
+        collection(medicine_list)
+           
+            # call function to activate hardware
         conn.close()
-        gc.collect()
-        
-        title = ''
-        if (MedicineAStock <5 and MedicineBStock<5):
-            title = 'Low stock for MedicineA and MedicineB'
-        elif MedicineAStock <5:
-            title = 'Low stock for MedicineA'
-        elif MedicineBStock <5:
-            title = 'Low stock for MedicineB'
-        if title!='':
-            fromaddr = "digitalpharmacy1@gmail.com"
-            toaddr = "digitalpharmacy1@gmail.com"
-            msg = MIMEMultipart()
-            msg['From'] = fromaddr
-            msg['To'] = toaddr
-            msg['Subject'] = title
-
-            body = "Low stock. Please replenish ASAP"
-            msg.attach(MIMEText(body, 'plain'))
-
-
-            server = smtplib.SMTP('smtp.gmail.com', 587)
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login("digitalpharmacy1@gmail.com", "Pharmacy1920")
-            text = msg.as_string()
-            server.sendmail(fromaddr, toaddr, text)
-            server.quit()
-            
-            
         return jsonify('Done')
     except Exception as e:
+        print(e)
         return('error')
-    
-    
+        
+        
+        
+        
 if __name__ == '__main__':
-    app.run(debug = True)
-    
+    try:   
+        app.run(debug = True)
+    except KeyboardInterrupt:
+        print("interrupt")
+        user_qr.close()
