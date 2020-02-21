@@ -25,14 +25,15 @@ CORS(app, support_credentials=True)
 
 #initialise the medication location
 med_location = {}
-med_location['Diphenhydramine'] = ['bottle',518,0]
-med_location['MedicineB'] = ["blister",152, 235]
-med_location['MedicineC'] = ["blister",250, 235]
-med_location['MedicineD'] = ["blister",333, 235]
-med_location['MedicineE'] = ["blister",425, 235]
-med_location['MedicineF'] = ["blister",512, 235]
-
-
+med_location['Diphenhydramine'] = ['bottle',521,0]
+med_location['MedicineB'] = ["blister",192, 235]
+med_location['MedicineC'] = ["blister",290, 235]
+med_location['MedicineD'] = ["blister",373, 235]
+med_location['MedicineE'] = ["blister",465, 235]
+med_location['MedicineF'] = ["blister",552, 235]
+med_location['MedicineG'] = ["blister",82, 235]
+med_location['MedicineH'] = ["blister",652, 235]
+med_location['MedicineI'] = ["box",501, 0]
 
 
 #medicine_list = [["Diphenhydramine", "box", 1 , 465, 0]]
@@ -49,7 +50,7 @@ med_location['MedicineF'] = ["blister",512, 235]
 @app.route('/startingpage/' , methods=["GET","POST"])
 def startingpage():
     #time.sleep(1)
-    playsound(r'C:\Users\DP\Desktop\FlaskApp\silence.mp3') 
+    playsound(r'C:\Users\DP\Desktop\FlaskApp\beep.mp3') 
     playsound(r'C:\Users\DP\Desktop\FlaskApp\welcome.mp3') # need change address
     return jsonify('True')
 
@@ -167,7 +168,7 @@ def qrcode():
              while (qr == ''):
                 qr = user_qr.read()
              print (qr)
-             playsound(r'C:\Users\DP\Desktop\FlaskApp\silence.mp3')  # need change location'
+             playsound(r'C:\Users\DP\Desktop\FlaskApp\beep.mp3')  # need change location'
              playsound(r'C:\Users\DP\Desktop\FlaskApp\beep2.mp3') 
              if qr.strip() == 'Diclofenac Sodium 25mg':
                 print('management page')              
@@ -429,7 +430,8 @@ def updateDBOTC():
                t4.start()
             
             medicine_list.append([item['name'],med_location[item['name']][0],item['quantity'],med_location[item['name']][1],med_location[item['name']][2]])
-        collection(medicine_list)
+        if len(medicine_list) != 0:
+            collection(medicine_list)
            
             # call function to activate hardware
         conn.close()
