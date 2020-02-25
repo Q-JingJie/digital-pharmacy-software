@@ -11,14 +11,15 @@ from playsound import playsound
 import threading
 from email import encoders
 from email.mime.base import MIMEBase
-from motion_controller import collection
+import datetime
+#from motion_controller import collection
 
 
-user_qr = serial_conn("COM3", 115200, 0.2, "User QR Scanner")
+#user_qr = serial_conn("COM3", 115200, 0.2, "User QR Scanner")
 random.seed(0)
 
-db_location = r'C:\Users\DP\Desktop\FlaskApp\pythonsqlite.db'
-#db_location = r'C:\Users\Kan Chee Kong\Desktop\FlaskApp1\pythonsqlite.db'
+#db_location = r'C:\Users\DP\Desktop\FlaskApp\pythonsqlite.db'
+db_location = r'E:\FlaskApp1\FlaskApp\pythonsqlite.db'
 app = Flask(__name__)
 CORS(app, support_credentials=True)
 
@@ -106,7 +107,7 @@ def updatemaindb():
 def securitycode():
     global securityCode
     securityCode = random.randint(100000,999999)
-    title = 'Security Code'
+    title = 'Security Code for Cuboid Digital Pharmacy'
     fromaddr = "digitalpharmacy1@gmail.com"
     toaddr = "digitalpharmacy1@gmail.com"
     msg = MIMEMultipart()
@@ -186,7 +187,7 @@ def qrcode():
 
 @app.route('/PMed/' , methods=["GET","POST"])
 def PMed():
-    #qr = 'XXX'
+    qr = 'XXX'
     try:
         conn = sqlite3.connect(db_location)
         cursor = conn.execute("SELECT * from prescriptionmed where nric = '{}'".format(qr.strip()))
@@ -203,7 +204,7 @@ def PMed():
 
         for i in range(len(medicine_list)):
             for j in range(len(medicine_stock)):
-                if (medicine_list[i][2] == medicine_stock[j][0]):
+                if (medicine_list[i][2] == medicine_stock[j][0]) and (medicine_list[i][4]!= medicine_list[i][3]):
                     medlist["dbid"] = medicine_list[i][0]
                     medlist["id"] = medicine_list[i][2]
                     medlist["name"] = medicine_stock[j][1]
@@ -212,8 +213,12 @@ def PMed():
                     medlist["stock"] = medicine_stock[j][4]
                     medlist["price"] = medicine_stock[j][5]
                     medlist["qty"] = medicine_list[i][3]
+                    medlist["collected"] = medicine_list[i][4]
+                    medlist["Instruction"] = medicine_list[i][5]
+                    medlist["pic"] = r"http://157.245.196.149/static/images/{}".format(medicine_stock[j][6])
                     medicines.append(medlist)
                     medlist = {}
+
 
         med["medicine"] = medicines
         return jsonify({'medicines' : med})
@@ -229,13 +234,12 @@ def Pdb(medid, data):
     conn = sqlite3.connect(db_location)
     cursor = conn.execute("SELECT * from prescriptionmed where DBid = '{}'".format(medid)) # need change
     medicine_list = cursor.fetchall()    #data from database
-    medstock = int(medicine_list[0][3]) - int(data)
+    medstock = int(medicine_list[0][4]) + int(data)
     return(medstock)
 
 
 def Pstock(medname, data):
     conn = sqlite3.connect(db_location)
-   # qr = 'XXX'
     cursor = conn.execute("SELECT * from prescriptionstock where PmedName = '{}'".format(medname)) # need change
     medicine_list = cursor.fetchall()    #data from database
     medstock = int(medicine_list[0][4]) - int(data)
@@ -254,19 +258,44 @@ def message(med):
     p.add_header('Content-Disposition', "attachment; filename= %s" % filename) 
     return(p)
     
-def Pemail(med):
+def Pemail(brochure, invoice):
+    title = 'Cuboid Digital Pharmacy Invoice'
     fromaddr = "digitalpharmacy1@gmail.com"
     toaddr = 'digitalpharmacy1@gmail.com'
     msg = MIMEMultipart()
     msg['From'] = fromaddr
     msg['To'] = toaddr
-    msg['Subject'] = "Information leaflets"
+    msg['Subject'] = title
     
+    item = ''
+    line = '-'
+    for items in range(0,len(invoice)-1,5):
+        item = item+"{}                        {}                       {}\n{}\n{}\n{}\n".format(medlist[items],medlist[items+1],medlist[items+2],medlist[items+3],medlist[items+4],line*70)
     
-    body = "Dear Sir or Madam,\nThanks for using GoMed\nPlease find attached information leaflets for your medications"
-    msg.attach(MIMEText(body, 'plain'))
+    total = "                                         Total Amount paid: {}".format(medlist[len(invoice)-1])
+    body = """\
+    <html>
+        <body>
+            <h2 style="color:grey;"><font size="10">Dear Sir or Madam,</font></h2>
+            <h2 style="color:grey;"><font size="10"> Thanks for using Cuboid Digital Pharmacy</font></h2>
+            <h3 style="color:grey;"><font size="8">  Your {}/{}/{} invoice is now available.</font></h3>
+            <br>
+            <h3><center><font size="8">Prescription Summary</font></center></h3>
+            <br>
+            <h3><pre><font size="6">Drugs/Presctiption                 Quantity                 Amount(S$)</font></pre></h3>
+            <h3><pre><font size="6">{}</font></pre></h3><br>
+            <h3><pre style="border:1px solid black;"><font size="6">{}</font></pre><h3>
+            <h3> Please find attached information leaflets for your medications </h3>
+            <h3> Have question? </h3>
+            <h3> You can check out our <a href = #>FAQ</a> or our <a href = #>support page for more information</a>
+        </body>
+    </html>
+""".format(now.day, now.month, now.year, item,total)
+   
+   # body = "Dear Sir or Madam,\nThanks for using GoMed\nPlease find attached information leaflets for your medications"
+    msg.attach(MIMEText(body, 'html'))
     
-    for item in med:
+    for item in brochure:
         p = message(item)
         msg.attach(p) 
 
@@ -281,7 +310,7 @@ def Pemail(med):
 
 
     
-@app.route('/updateDBPmed/', methods=["GET","POST"])# update datebase for OTC med
+@app.route('/updateDBPmed/', methods=["GET","POST"])# update datebase for prescription med
 def updateDBPmed():
     medicine_data = request.get_json() # Get the data from react
     print(medicine_data)  # debugging
@@ -290,13 +319,15 @@ def updateDBPmed():
     
     
     brochure = []
+    invoice_item = []
     medicine_list = []    
     try:
         cart = medicine_data["cart"]
         conn = sqlite3.connect(db_location) 
         for item in cart:
+            print(item)
             remainingstock = Pdb(item['dbid'], item['qty'])
-            sql_update_query = ("update prescriptionmed SET quantity = {} where DBid = {}".format(remainingstock, item['dbid']))
+            sql_update_query = ("update prescriptionmed SET collected = {} where DBid = {}".format(remainingstock, item['dbid']))
             conn.execute(sql_update_query)       
             conn.commit()
 
@@ -306,7 +337,7 @@ def updateDBPmed():
             conn.commit()
             
             brochure.append(item['name'])
-            
+            invoice_item.extend([item['name'],item['qty'],item['price'],item['description'],item['Instruction']])
             
             if int(remainingstock) < 15:
                 t2 = threading.Thread(target=StockEmail , args=(item['name'],))     
@@ -318,7 +349,9 @@ def updateDBPmed():
         
            
         conn.close()
-        t3 = threading.Thread(target=Pemail , args=(brochure,))    
+        
+        # check if email subscription is true
+        t3 = threading.Thread(target=Pemail , args=(brochure,invoice_item))    
         t3.start()         
         collection(medicine_list)
         t3.join()
@@ -449,3 +482,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print("interrupt")
         user_qr.close()
+
