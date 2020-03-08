@@ -224,7 +224,8 @@ def verification (medicine_name):
     start = time.time()
     
     while True:
-        qr_text = med_qr.read()        
+        qr_text = med_qr.read()
+        print(qr_text)
         if qr_text == medicine_name:
             return True
         elif qr_text == NO_STOCK:
@@ -259,7 +260,8 @@ def collection(medicine_list):
     
     #Reoganise medicine list for optimal collection
     medicine_list = collection_order(medicine_list)
-
+    max_index = len(medicine_list) - 1
+    
     #Variables
     retries = 0
     out_of_stock = []
@@ -270,11 +272,14 @@ def collection(medicine_list):
         #If too many retries have been attepmted
         if retries > MAX_RETRIES:
             break
-        
-        while True:
-            if retries > MAX_RETRIES:
-                break
 
+        #If medicine is previously marked as out of stock
+        #Then no point checking again
+        if len(out_of_stock) != 0:
+            if out_of_stock[-1] == medicine[0]:
+                continue
+            
+        while True:
             #STEP 1
             #Move QR platfom to the medicine location, and the collection platform to its side
             x_left = medicine[2] + X_LEFT_OFFSET
@@ -333,7 +338,7 @@ def collection(medicine_list):
             #Move QR platform to the next medicine location
             #Move collection platform to the medicine location
             #Move Z lower than maximum release height, or z lift height if it is a bottle
-            if index < len(medicine_list) - 1:
+            if index < max_index:
                 x_left = medicine_list[index + 1][2] + X_LEFT_OFFSET
 
             if verification_result:
@@ -380,7 +385,9 @@ def collection(medicine_list):
 
             if verification_result:
                 break
-
+            
+            if retries > MAX_RETRIES:
+                break
 
     #END COLLCETION
     #Collection has finished, home axis
