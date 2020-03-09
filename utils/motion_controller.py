@@ -17,7 +17,7 @@ Z_OFFSET         = 0                                #Offset value to Z axis heig
 Y_ANGLE = 26                                        #Collection angle
 
 DISPENSING_LOCATION = X_MAX - 5                     #Location of dispensing box, based on X axis
-BIN_LOCATION = 60                                   #Location of bin box, based on X axis
+BIN_LOCATION = X_CARRIAGE_WIDTH                     #Location of bin box, based on X axis
 MAX_RELEASE_HEIGHT  = 100                           #Global maximum height for medicine release
 
 Z_LIFT = 150                                        #Lift Z axis if it is a bottle or box
@@ -338,13 +338,13 @@ def collection(medicine_list):
             #Move QR platform to the next medicine location
             #Move collection platform to the medicine location
             #Move Z lower than maximum release height, or z lift height if it is a bottle
-            if index < max_index:
-                x_left = medicine_list[index + 1][2] + X_LEFT_OFFSET
-
             if verification_result:
                 x_right = DISPENSING_LOCATION
+                if index < max_index:
+                    x_left = medicine_list[index + 1][2] + X_LEFT_OFFSET
             else:
                 x_right = BIN_LOCATION
+                 x_left = BIN_LOCATION - X_CARRIAGE_WIDTH
 
             if medicine[1] == "bottle":
                 z = Z_FREE
