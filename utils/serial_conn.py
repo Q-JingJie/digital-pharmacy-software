@@ -38,7 +38,7 @@ class serial_conn:
 
     def flush(self):
         self.ser.timeout = 0.01
-        while user_qr.read() != '':
+        while self.read() != '':
             pass
         self.ser.timeout = self.timeout
 

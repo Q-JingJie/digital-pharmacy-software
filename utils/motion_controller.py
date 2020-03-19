@@ -3,7 +3,7 @@ import time
 import cv2
 import os
 from numpy import cos
-
+import queue
 
 #++++++++++++++ PHYSICAL CONSTRAINTS +++++++++++++
 X_MAX = 741                                         #Maxmium travel length on X axis
@@ -14,35 +14,38 @@ X_CARRIAGE_WIDTH = 90                               #Size of X carriages with in
 X_LEFT_OFFSET    = -18                              #Offset value to center X left carrriage
 X_RIGHT_OFFSET   = 28                               #Offset value to center X right carrriage
 Z_OFFSET         = 0                                #Offset value to Z axis height
-Y_ANGLE = 26                                        #Collection angle
 
 DISPENSING_LOCATION = X_MAX - 5                     #Location of dispensing box, based on X axis
-BIN_LOCATION = X_CARRIAGE_WIDTH                     #Location of bin box, based on X axis
+BIN_LOCATION = 90                                   #Location of bin box, based on X axis
 MAX_RELEASE_HEIGHT  = 100                           #Global maximum height for medicine release
 
+                                                    #Parameters for removing non-flexible form factor, such as bottle and box
 Z_LIFT = 150                                        #Lift Z axis if it is a bottle or box
 Z_FREE = 150                                        #Height where the collection platform is able to rotate medicine without obstacle
 Y_FREE = 0                                          #Distance where the collection platform is able to rotate medicine without obstacle
+Y_ANGLE = 26                                        #Actual collection angle, used to calculate Y axis retraction
 Y_RETRACT_WHILE_Z_LIFT = Z_LIFT * cos(Y_ANGLE * 0.01745) #Retract Y axis linearly with Z lift
 
+                                                    #Values calibrated to servo motor
 SERVO_30_DEG = 69                                   #Upwards
 SERVO_0_DEG  = 90                                   #Horizontal
 SERVO_10_DEG  = 110                                 #Downwards
 SERVO_90_DEG = 160                                  #Downwards
 
-DEFAULT_FEEDRATE = 12000                            #Normal Speed
+                                                    #For stepper motor, increasing speed decreases torque and vice versa
+DEFAULT_FEEDRATE = 12000                            #Normal Speed, maximum depend on supply voltage and motor torque
 Y_ACTUATOR_FEEDRATE = 5000                          #Y actuator collection speed
-MAX_FEEDRATE = 20000                                #Feedrate for X only moves
-MAX_RETRIES = 3                                     #Number of retries allowed for collection
+MAX_FEEDRATE = 20000                                #Feedrate for X only moves, Z has move slower due to torque limits
 
                          
 
 
 #++++++++++++++ SERIAL COMMUNICATIONS +++++++++++++
 motion = serial_conn("COM4", 115200, 0.2, "Motion Controller")
-med_qr = serial_conn("COM2", 115200, 0.1, "Medicine QR Scanner")
+med_qr = serial_conn("COM2", 115200, 1.5, "Medicine QR Scanner")
 QR_VERIFICATION_TIMEOUT = 5
-NO_STOCK = 'Out of Stock'
+
+
 
 
 
@@ -57,8 +60,16 @@ IMAGE_PATH = "D:/Capture"
 
 
 
+#++++++++++++ DEFINITION INITIALIZATION +++++++++++
+NO_STOCK = 'Out of Stock'
+BOTTLE = 'bottle'
+BOX = 'box'
+
+
+
+
 #++++++++++++++ MOTION +++++++++++++
-def motor_enable(state): #Enable is not required. Stepper motor should be disabled when not needed.
+def motor_enable(state): #Enable is not required
     if state == True:
         motion.write("M17\r")
     else:
@@ -76,23 +87,30 @@ def stepper_home_position():
     return False if ("ERROR" in result) or ("!!" in result) else True
 
 
-def position_sanity_check(x_left, x_right, y, z):  #Check for XYZ boundaries, as well as platform collision
-    if (y > Y_MAX) or (y < 0) or (z > Z_MAX) or (z < 0) or (x_left > X_MAX) or (x_left < 0) or (x_right > X_MAX) or (x_right < 0) or ((x_right - x_left) < X_CARRIAGE_WIDTH):
+#Check for XYZ boundaries, as well as platform collision
+def position_sanity_check(x_left, x_right, y, z):
+
+    if (y > Y_MAX) or (y < 0) or (z > Z_MAX) or (z < 0) or \
+       (x_left > X_MAX) or (x_left < 0) or (x_right > X_MAX)\
+       or (x_right < 0) or ((x_right - x_left) < X_CARRIAGE_WIDTH):
+        print("Unreachable location received. Move shall not be executed.")
         return False
     else:
         return True
 
     
-def stepper_set_position(x_left, x_right, y, z, blocking, feedrate = DEFAULT_FEEDRATE):  #While the position is being set, only the read/set position commands should be executed.
-    if position_sanity_check(x_left, x_right, y, z) == True: #The execution of other commands result in the inability to read realtime position.
+def stepper_set_position(x_left, x_right, y, z, blocking, feedrate = DEFAULT_FEEDRATE): 
+    if position_sanity_check(x_left, x_right, y, z) == True:
         x_right_corrected = X_MAX - x_right  #Map value of X_right to actual Y axis output
-        motion.write("G1 X" + str("%.2f" % x_left) + " Y" + str("%.2f" % x_right_corrected)  + " Z" + str("%.2f" % z) + " E" + str("%.2f" % y) + " F" + str(feedrate) + "\r")
+        motion.write("G1 X" + str("%.2f" % x_left) + " Y" + str("%.2f" % x_right_corrected)  + \
+                     " Z" + str("%.2f" % z) + " E" + str("%.2f" % y) + " F" + str(feedrate) + "\r")
         result = True if motion.read()== "ok" else False
-
-        while blocking:
+        
+        while blocking: #Block further program execution until move is completed
             reading = stepper_read_realtime_position()
-            if reading != None:
-                if (abs(reading[0] - x_left) < 0.1) and (abs(reading[1] - x_right) < 0.1) and (abs(reading[2] - y)< 0.1) and (abs(reading[3] - z) < 0.1):
+            if reading != None:  #No reading error
+                if (abs(reading[0] - x_left) < 0.1) and (abs(reading[1] - x_right) < 0.1) \
+                   and (abs(reading[2] - y)< 0.1) and (abs(reading[3] - z) < 0.1):
                     blocking = False
                     
         return result
@@ -105,21 +123,13 @@ def stepper_read_realtime_position():  #Read actual position and returns [X_LEFT
         motion.write("M114.3\r")
         position = motion.read().split()
         if len(position) == 6:
-            return  [float(position[2][2::]), round((X_MAX - float(position[3][2::])),4), float(position[5][2::]), float(position[4][2::])]
+            return  [float(position[2][2::]), round((X_MAX - float(position[3][2::])),4), \
+                     float(position[5][2::]), float(position[4][2::])]
         else:
             return None
     except:
         return None
 
-'''
-def stepper_read_set_position():  #Read set position and returns [X_LEFT, X_RIGHT, Y, Z]
-    motion.write("M114\r")
-    position = motion.read().split()
-    if len(position) == 6:
-        return  [float(position[2][2::]), round((X_MAX - float(position[3][2::])),4), float(position[5][2::]), float(position[4][2::])]
-    else:
-        return None
-'''    
 
 def Y_axis_angle(angle):         #for 180 degrees servo, mapped 0 to 180 degrees to PWM.
     if (angle <= 180) and (angle >= 0):
@@ -185,35 +195,6 @@ def collection_order(medicine_list_raw): #Start from bottom left
             medicine_list.append([medicine[0], medicine[1], medicine[3], medicine[4]])
     return medicine_list
 
-'''
-def stepper_set_position_optimized(x_left, x_right, y, z): #optimize X_left and X_right platform position by allowing more time for QR scanner when possible
-    if position_sanity_check(x_left, x_right, y, z) == True:
-        waiting = True
-        
-        while waiting:
-            result = stepper_read_set_position()
-            if result != None:
-                [current_x_left, current_x_right, current_y, current_z] = result
-                waiting = False
-                
-        delta_x_left  = abs(x_left  - current_x_left)
-        delta_x_right = abs(x_right - current_x_right)
-        delta_z       = abs(z - current_z)
-        
-        if(delta_x_left > 0.1) and (delta_z < 0.1):
-            if delta_x_left < delta_x_right:
-                if (x_right - current_x_right) > 0:
-                    stepper_set_position(x_left, current_x_right + delta_x_left, y, z, True)
-                else:
-                    stepper_set_position(x_left, current_x_right - delta_x_left, y, z, True)
-            else:
-                if (x_left - current_x_left) > 0:
-                    stepper_set_position(current_x_left + delta_x_right, x_right, y, z, True)
-                else:
-                    stepper_set_position(current_x_left - delta_x_right, x_right, y, z, True)
-                
-        return stepper_set_position(x_left, x_right, y, z, True)
-'''
 
 
 
@@ -226,10 +207,13 @@ def verification (medicine_name):
     while True:
         qr_text = med_qr.read()
         print(qr_text)
-        if qr_text == medicine_name:
-            return True
-        elif qr_text == NO_STOCK:
-            return None
+        if qr_text !='':
+            if medicine_name in qr_text:
+                return True
+            elif NO_STOCK in qr_text:
+                return None
+            else:
+                return False
         
         if (time.time() - start) > QR_VERIFICATION_TIMEOUT:
             return False
@@ -244,41 +228,55 @@ def capture_image(medicine_name):
 
     
 #++++++++++++++ COLLECTION +++++++++++++
-def collection(medicine_list):
+def collection(medicine_list, return_queue, MAX_RETRIES = 3):
+    #Clear serial communications buffer
     motion.flush()
-    
-    #Home all axis on startup   
-    stepper_home_position()
 
+
+    #Home all axis on startup. If procedure fails, attempt to reset system.
+    while not stepper_home_position():
+        system_halt()   
+        soft_reset()
+        time.sleep(5)
+
+        
     #Set collection actuator angle
     Y_axis_angle(SERVO_30_DEG)
+
 
     #Configure peripherals
     fan_enable(True)            #Stepper cooling
     LED_enable(False)           #Turn off collection box LED
     vacuum_pump_enable(False)   #Turn off vacuum pump
+
     
     #Reoganise medicine list for optimal collection
     medicine_list = collection_order(medicine_list)
     max_index = len(medicine_list) - 1
+
     
     #Variables
     retries = 0
     out_of_stock = []
     unverified = []
-    
-    for index, medicine in enumerate(medicine_list):
-        #STEP 0
-        #If too many retries have been attepmted
-        if retries > MAX_RETRIES:
-            break
+    attempt = []
 
-        #If medicine is previously marked as out of stock
-        #Then no point checking again
+
+    #Iterate through medicine to be collected
+    for index, medicine in enumerate(medicine_list):       
+        #STEP 0
+        #If too many retries (global) have been attepmted
+        if retries >= MAX_RETRIES:
+            break
+            
+        #If medicine is previously marked as out of stock, skip to the next available medicine
         if len(out_of_stock) != 0:
             if out_of_stock[-1] == medicine[0]:
                 continue
-            
+
+        #Keep track of the number of attempts made per medicine
+        individual_tries = 0            
+
         while True:
             #STEP 1
             #Move QR platfom to the medicine location, and the collection platform to its side
@@ -289,18 +287,26 @@ def collection(medicine_list):
             stepper_set_position(x_left, x_right, y, z, True) 
 
 
+
             #STEP 2        
             #QR verification & capture image
-            verification_result = verification(medicine[0]) #True: Verified     #False: Unverified     #None: Out of stock
+            #True: Verified     #False: Unverified     #None: Out of stock
+            verification_result = verification(medicine[0]) 
             capture_image(medicine[0])
 
+            #If out of stock (Out of Stock QR Code detected)
             if verification_result is None:
                 out_of_stock.append(medicine[0])
                 break
-
+            
+            #If unable to verify (No / Wrong QR Code detected)
             if not verification_result:
                 unverified.append(medicine[0])
                 retries += 1
+                
+            #Keep track of the number of attempts made per medicine
+            individual_tries += 1
+
 
                 
             #STEP 3
@@ -310,9 +316,11 @@ def collection(medicine_list):
             stepper_set_position(x_left, x_right, y, z, False, feedrate = MAX_FEEDRATE)
 
 
+
             #STEP 4        
             #Turn on vacuum pump and valve to collect medicine
             vacuum_pump_enable(True)
+
 
 
             #STEP 5
@@ -320,13 +328,17 @@ def collection(medicine_list):
             y = Y_MAX
             stepper_set_position(x_left, x_right, y, z, True, feedrate = Y_ACTUATOR_FEEDRATE)
             time.sleep(0.1)
+
+            
                  
             #STEP 6
             #If it is a bottle or box, remove by lifting Z axis and retracting Y axis linearly
-            if medicine[1] == "bottle" or medicine[1] == "box":
+            if medicine[1] == BOTTLE or medicine[1] == BOX:
                 z += Z_LIFT
                 y -= Y_RETRACT_WHILE_Z_LIFT     
                 stepper_set_position(x_left, x_right, y, z, False, feedrate = Y_ACTUATOR_FEEDRATE)
+
+
 
             #STEP 6.5
             #Retract Y axis completely to extract medicine
@@ -334,19 +346,20 @@ def collection(medicine_list):
             stepper_set_position(x_left, x_right, y, z, True, feedrate = Y_ACTUATOR_FEEDRATE)
 
 
+
             #STEP 7        
             #Move QR platform to the next medicine location
             #Move collection platform to the medicine location
-            #Move Z lower than maximum release height, or z lift height if it is a bottle
+            #Move Z lower than maximum release height, or z lift height if it is a bottle            
             if verification_result:
                 x_right = DISPENSING_LOCATION
                 if index < max_index:
                     x_left = medicine_list[index + 1][2] + X_LEFT_OFFSET
             else:
                 x_right = BIN_LOCATION
-                 x_left = BIN_LOCATION - X_CARRIAGE_WIDTH
+                x_left = BIN_LOCATION - X_CARRIAGE_WIDTH
 
-            if medicine[1] == "bottle":
+            if medicine[1] == BOTTLE:
                 z = Z_FREE
             else:
                 if z > MAX_RELEASE_HEIGHT:
@@ -359,7 +372,7 @@ def collection(medicine_list):
             #If it is a bottle, move Y axis slightly forward and rotate bottle downwards
             #Extend Y axis and lower Z axis to dampen drop
             #Then retract Y axis and assume collection angle
-            if medicine[1] == "bottle":
+            if medicine[1] == BOTTLE:
                 y = Y_FREE
                 stepper_set_position(x_left, x_right, y, z, True)
                 time.sleep(0.1)
@@ -384,12 +397,18 @@ def collection(medicine_list):
                 Y_axis_angle(SERVO_30_DEG)
 
             if verification_result:
+                attempt.append((medicine[0], individual_tries))
                 break
             
-            if retries > MAX_RETRIES:
+            if retries >= MAX_RETRIES:
+                attempt.append((medicine[0], individual_tries))
                 break
 
+
+
     #END COLLCETION
+    return_queue.put((out_of_stock, unverified, attempt))
+    
     #Collection has finished, home axis
     #Turn on ready indication LED, wait for 10s
     LED_enable(True)
@@ -400,8 +419,6 @@ def collection(medicine_list):
     #After 5s, disable motor and LED
     motor_enable(False)
     
-    #After 10s, disable motor and LED
+    #After 10s, disable LED
     time.sleep(5)
     LED_enable(False)
-
-    return out_of_stock, unverified
