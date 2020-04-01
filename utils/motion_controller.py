@@ -45,11 +45,6 @@ motion = serial_conn("COM4", 115200, 0.2, "Motion Controller")
 med_qr = serial_conn("COM2", 115200, 1.5, "Medicine QR Scanner")
 QR_VERIFICATION_TIMEOUT = 5
 
-
-
-
-
-
 #++++++++++++++ CAMERA INITIALIZATION +++++++++++++
 capture = cv2.VideoCapture(1)
 capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
@@ -206,7 +201,6 @@ def verification (medicine_name):
     
     while True:
         qr_text = med_qr.read()
-        print(qr_text)
         if qr_text !='':
             if medicine_name in qr_text:
                 return True
@@ -413,10 +407,10 @@ def collection(medicine_list, return_queue, MAX_RETRIES = 3):
     #Turn on ready indication LED, wait for 10s
     LED_enable(True)
     stepper_home_position()
-    fan_enable(False)
     time.sleep(5)
 
     #After 5s, disable motor and LED
+    fan_enable(False)
     motor_enable(False)
     
     #After 10s, disable LED
