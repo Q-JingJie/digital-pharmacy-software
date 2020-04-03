@@ -13,54 +13,89 @@ from email import encoders
 from email.mime.base import MIMEBase
 import datetime
 from motion_controller import collection
-
-
+import pysftp
+import queue
 
 user_qr = serial_conn("COM3", 115200, 200, "User QR Scanner")
 
 
+
 start_collecting = False
 finish_collecting = False
+qr_flag = False
+error_flag = False
 
 app = Flask(__name__)
 CORS(app, support_credentials=True)
 
-
+#sound = playsound(r'C:\Users\DP\Desktop\FlaskApp\welcome.mp3')
 
 #initialise the Database location
 db_location = r'C:\Users\DP\Desktop\FlaskApp\pythonsqlite.db'
 #db_location = r'E:\FlaskApp1\FlaskApp\pythonsqlite.db'
 
-
+otcmed = ['Medicine A 100mg','Medicine B 200mg','Medicine C 300mg','Medicine D 400mg','Medicine E 500mg']
 
 #initialise the medication location
 med_location = {}
-med_location['Medicine F 10mg'] = ['bottle',521,0]
-med_location['Medicine G 20mg'] = ["blister",192, 235]
-med_location['Medicine H 30mg'] = ["blister",290, 235]
-med_location['Medicine I 40mg'] = ["blister",373, 235]
-med_location['Medicine A 100mg'] = ["blister",465, 235]
-med_location['Medicine B 200mg'] = ["blister",552, 235]
-med_location['Medicine C 300mg'] = ["blister",82, 235]
-med_location['Medicine D 400mg'] = ["blister",652, 235]
-med_location['Medicine E 500mg'] = ["box",461, 0]
+med_location['Medicine H 30mg'] = ['bottle',521,0]
+med_location['Medicine A 100mg'] = ["blister",82, 235]
+med_location['Medicine B 200mg'] = ["blister",192, 235]
+med_location['Medicine C 300mg'] = ["blister",290, 235]
+med_location['Medicine D 400mg'] = ["blister",373, 235]
+med_location['Medicine E 500mg'] = ["blister",465, 235]
+med_location['Medicine F 10mg'] = ["blister",552, 235]
+med_location['Medicine G 20mg'] = ["blister",652, 235]
+med_location['Medicine I 40mg'] = ["box",461, 0]
+
+
+# med_location['Medicine F 10mg'] = ['bottle',521,0]
+# med_location['Medicine G 20mg'] = ["blister",192, 235]
+# med_location['Medicine H 30mg'] = ["blister",290, 235]
+# med_location['Medicine I 40mg'] = ["blister",373, 235]
+# med_location['Medicine A 100mg'] = ["blister",465, 235]
+# med_location['Medicine B 200mg'] = ["blister",552, 235]
+# med_location['Medicine C 300mg'] = ["blister",82, 235]
+# med_location['Medicine D 400mg'] = ["blister",652, 235]
+#med_location['Medicine E 500mg'] = ["box",461, 0]
 
 
 
 @app.route('/startingpage/' , methods=["GET","POST"])
 def startingpage():
+    global sound
     # play welcome to Cuboid Digital Pharmacy
-    playsound(r'C:\Users\DP\Desktop\FlaskApp\beep.mp3') 
-    playsound(r'C:\Users\DP\Desktop\FlaskApp\welcome.mp3') # need change address
+    #playsound(r'C:\Users\DP\Desktop\FlaskApp\250sec2.mp3',block = True) 
+    playsound(r'C:\Users\DP\Desktop\FlaskApp\welcome_extended.mp3',block = False) # need change address
+    
     return jsonify('True')
     
 
+def update_database():
+    cnopts = pysftp.CnOpts()
+    cnopts.hostkeys = None
+    srv = pysftp.Connection(host="157.245.196.149", username="root",password="DigitalpharmacY1920",cnopts=cnopts)
+    
+    with srv.cd('/var/www/FlaskApp/Database/'): #chdir to public
+        srv.put(r'C:\Users\DP\Desktop\FlaskApp\pythonsqlite.db')
+    srv.close()
+    
+def get_database():
+    cnopts = pysftp.CnOpts()
+    cnopts.hostkeys = None
+    with pysftp.Connection(host="157.245.196.149", username="root",password="DigitalpharmacY1920",cnopts=cnopts) as sftp:
 
+        remoteFilePath = '/var/www/FlaskApp/Database/pythonsqlite.db'
+        localFilePath = r'C:\Users\DP\Desktop\FlaskApp\pythonsqlite.db'
+
+        sftp.get(remoteFilePath, localFilePath)
 # list of all GSL medicine
 @app.route('/OTCMedicine/')
 @cross_origin(supports_credentials=True)
 def OTCMedicine():
     # connect to OTC database(DB)
+    get_database()
+    
     conn = sqlite3.connect(db_location) # need change file location
     cursor = conn.execute("SELECT * from otcmedicine")
     medicine_list = cursor.fetchall()   
@@ -80,14 +115,15 @@ def OTCMedicine():
 
 @app.route('/flushqr/' , methods=["GET","POST"])
 def flushqr():
-    user_qr.set_timeout(0.01)
+    #user_qr.set_timeout(0.01)
     #global user_qr
     #user_qr.close()
     #user_qr = serial_conn("COM3", 115200, 0.1, "User QR Scanner")
-    while user_qr.read() != '':
-        pass
+    #while user_qr.read() != '':
+    #    pass
         
-    user_qr.set_timeout(200)
+    #user_qr.set_timeout(200)
+    user_qr.flush()
    # user_qr.close()
     #user_qr = serial_conn("COM3", 115200, 1, "User QR Scanner")
     return jsonify('True')
@@ -100,44 +136,49 @@ def qrcode():
     time.sleep(1)
     #start_scanning = request.get_json()
     #print(start_scanning)
-    global qr
-    try: 
-         #if start_scanning['qr']:
-         print('scanning now')            
-         qr = ''   
-         meds = {}
-         while (qr == ''):
-            #print(user_qr)
-            qr = user_qr.read()
-         print (qr)
-         playsound(r'C:\Users\DP\Desktop\FlaskApp\beep.mp3')  # need change location'
-         playsound(r'C:\Users\DP\Desktop\FlaskApp\beep2.mp3') 
-         if qr.strip() == 'Inventory Management':
-            print('management page')              
-            return jsonify('manage')
-         elif qr != '':
-            try:
-                conn = sqlite3.connect(db_location)
-                cursor = conn.execute("SELECT * from prescriptionmed where qrcode = '{}'".format(qr.strip()))
-                medicine_list = cursor.fetchall()   
-                meds['NRIC'] = medicine_list[0][1]
-                print('QR code detected')
-                return jsonify('True')
-            except Exception as e:
-                print(e)
-                return jsonify('Problem accessing database')
-         else:
-            return jsonify('error')
-    except Exception as e:
-         print(e)
-         return jsonify('false')
+    global qr_flag
+    if qr_flag != True:
+        global qr
+        try: 
+             #if start_scanning['qr']:
+             print('scanning now')            
+             qr = ''   
+             meds = {}
+             while (qr == ''):
+                #print(user_qr)
+                qr = user_qr.read()
+             print (qr)
+             #playsound(r'C:\Users\DP\Desktop\FlaskApp\Recording.m4a')  # need change location'
+             playsound(r'C:\Users\DP\Desktop\FlaskApp\beep2_extended.mp3') 
+             if qr.strip() == 'Inventory Management':
+                print('management page') 
+                qr_flag = True
+                return jsonify('manage')
+             elif qr != '':
+                try:
+                    conn = sqlite3.connect(db_location)
+                    cursor = conn.execute("SELECT * from prescriptionmed where qrcode = '{}'".format(qr.strip()))
+                    medicine_list = cursor.fetchall()   
+                    meds['NRIC'] = medicine_list[0][1]
+                    print('QR code detected')
+                    qr_flag = True
+                    return jsonify('True')
+                except Exception as e:
+                    print(e)
+                    return jsonify('Problem accessing database')
+             else:
+                return jsonify('error')
+        except Exception as e:
+             print(e)
+             return jsonify('false')
          
 
 
 # generate security code
 @app.route('/securitycode/' , methods=["GET","POST"])
 def securitycode():
-    global securityCode
+    global securityCode, qr_flag
+    #qr_flag = False
     securityCode = random.randint(100000,999999)
     title = 'Security Code for Cuboid Digital Pharmacy'
     fromaddr = "digitalpharmacy1@gmail.com"
@@ -147,7 +188,7 @@ def securitycode():
     msg['To'] = toaddr
     msg['Subject'] = title
 
-    body = "Your OTP is {}. Use it within 1 minutes before it expires.".format(securityCode)
+    body = "Your OTP is {}. Use it within 1 minutes before it expires. If you have not made this request, please call us at +65 12345678 immediately".format(securityCode)
     msg.attach(MIMEText(body, 'plain'))
 
 
@@ -167,11 +208,13 @@ def securitycode():
 # 2FA verification
 @app.route('/PrescriptionMed/' , methods=["GET","POST"])
 def PrescriptionMed():
+    global qr_flag
     pin = request.get_json()
     FA = []
     for i in range(len(str(securityCode))):
         FA.append(int(str(securityCode)[i]))
     print(FA, pin)
+    qr_flag = False
     if FA == pin:
         return jsonify('True')
     else:
@@ -185,10 +228,14 @@ def PMed():
     #qr = 'XXX'
     #print(qr)
     try:
+        get_database()
+        #time.sleep(1)
         conn = sqlite3.connect(db_location)
+        print(qr)
         cursor = conn.execute("SELECT * from prescriptionmed where qrcode = '{}'".format(qr.strip()))
         medicine_list = cursor.fetchall()   
-
+        
+        print(medicine_list)
         c = conn.execute("SELECT * from prescriptionstock")
         medicine_stock = c.fetchall()
         conn.close()
@@ -260,8 +307,8 @@ def Pstock(medname, data):
 
 def message(med):
     extension = '.pdf'
-    file = 'Diphenhydramine.pdf'
-    #file = med +extension
+    #file = 'Diphenhydramine.pdf'
+    file = med.strip()+extension
     filename = file
     attachment = open(file, "rb") 
     
@@ -283,7 +330,7 @@ def Pemail(brochure, invoice):
     msg['From'] = fromaddr
     msg['To'] = toaddr
     msg['Subject'] = title
-    
+    img = r"http://157.245.196.149/static/images/logoblack.png"
     now = datetime.datetime.now()
     item = ''
     space = ' '
@@ -299,6 +346,8 @@ def Pemail(brochure, invoice):
     body = """\
     <html>
         <body>
+            <h2><center><img src='{}'></center></h2>
+            <br>
             <h2><font size="6">Dear Sir or Madam,</font></h2>
             <h2><font size="6">Thanks for using Cuboid Digital Pharmacy</font></h2>
             <h2><font size="6">Your {}/{}/{} invoice is now available.</font></h2>
@@ -313,7 +362,7 @@ def Pemail(brochure, invoice):
             <h3> You can check out our <a href = #>FAQ</a> or our <a href = #>support page for more information</a>
         </body>
     </html>
-""".format(now.day, now.month, now.year, item,total)
+""".format(img,now.day, now.month, now.year, item,total)
    
    # body = "Dear Sir or Madam,\nThanks for using GoMed\nPlease find attached information leaflets for your medications"
     msg.attach(MIMEText(body, 'html'))
@@ -369,10 +418,13 @@ def StockEmail(stock):
 
 @app.route('/finishcollection/', methods=["GET","POST"])    
 def finishcollection():
-    global finish_collecting
+    global finish_collecting, error_flag
     if finish_collecting == True:
         finish_collecting = False
-        return jsonify('Done')
+        if error_flag == True:
+            return jsonify('Error')
+        else:
+            return jsonify('Done')
     else:
         return jsonify('Still collecting medicine')
     
@@ -380,7 +432,7 @@ def finishcollection():
 # update stock for GSL medicine     
 @app.route('/updateDBOTC/', methods=["GET","POST"])# update datebase for OTC med
 def updateDBOTC():
-    global finish_collecting,start_collecting
+    global finish_collecting,start_collecting,error_flag
     if start_collecting != True:
         start_collecting = True
         medicine_data = request.get_json() # Get the data from react
@@ -390,6 +442,8 @@ def updateDBOTC():
         medicine_list = []    
         brochure = []
         invoice_item = []
+        
+        
         try:
             cart = medicine_data["cart"]
            # print(cart)
@@ -399,74 +453,128 @@ def updateDBOTC():
                 #print(cart[0]['Email'])
                 for item in cart:
                     if item['purchasing'] !=0:
-                        
-                        
                         remainingstock = Pdb(item['dbid'], item['purchasing'])
                         sql_update_query = ("update prescriptionmed SET collected = {} where DBid = {}".format(remainingstock, item['dbid']))
                         conn.execute(sql_update_query)       
                         conn.commit()
-                        
-                        
-                        Premainingstock = Pstock(item['name'], item['purchasing'])
-                        sql_update_query = ("update prescriptionstock SET PMedStock = {} where PmedName = '{}'".format(Premainingstock, item['name']))
-                        conn.execute(sql_update_query)       
-                        conn.commit()
-                        
-                        
                         brochure.append(item['name'])
-                        #print(item['name'],item['purchasing'],item['price'],item['Instruction'],item['description'])
-                        #invoice_item.extend([item['name'],item['purchasing'],item['price'],item['description'],item['Instruction'],item['subtotal']])
-                        print(item['name'],item['purchasing'],item['price'],item['description'])
                         invoice_item.extend([item['name'],item['purchasing'],item['price'],item['description'],item['subtotal']])
-                        
-                        print(remainingstock, 'remainingstock')
-                        if int(Premainingstock) < 15:
-                            t2 = threading.Thread(target=StockEmail , args=(item['name'],))     
-                            t2.start()                  
-                        
                         medicine_list.append([item['name'],med_location[item['name']][0],item['purchasing'],med_location[item['name']][1],med_location[item['name']][2]])
                         
-                    
                 if (cart[0]['Email']):
-                    t5 = threading.Thread(target=Pemail , args=(brochure,invoice_item))    
-                    t5.start()         
-                   # collection(medicine_list)
-                    #t3.join()
-                    
+                    thread5 = threading.Thread(target=Pemail , args=(brochure,invoice_item))    
+                    thread5.start()         
+        
             except:
                 for item in cart:
-                    remainingstock = otcdb(item['id'], item['quantity'])
-                    sql_update_query = ("update otcmedicine SET medicinestock = {} where medid = {}".format(remainingstock, item['id']))
-                    conn.execute(sql_update_query)       
-                    conn.commit()
-                    
-                    
-                    print('updated')  
-                    
-                    
-                    if int(remainingstock) < 15:
-                       #otcStockEmail(item['name'])
-                       t4 = threading.Thread(target=StockEmail , args=(item['name'],))  
-                       t4.start()
-                    
                     medicine_list.append([item['name'],med_location[item['name']][0],item['quantity'],med_location[item['name']][1],med_location[item['name']][2]])
-                    
+        
+            
             if len(medicine_list) != 0:
                 print(medicine_list)
-                A3 = threading.Thread(target=collection , args=(medicine_list,))    
+                q = queue.Queue()
+                A3 = threading.Thread(target=collection , args=(medicine_list,q))    
                 A3.start()     
+                print('updated com')  
+                result = q.get()
+                print(result)
+        
+                if result[0] != []:
+                    error_flag = True
+                    for medicinename in result[0]:
+                        print(medicinename)
+                        #conn = sqlite3.connect(db_location) 
+                        if medicinename in otcmed:
+                            sql_update_query = ("update otcmedicine SET medicinestock = {} where medicinename = '{}'".format(0,medicinename))
+                            
+                            conn.execute(sql_update_query)    
+                           
+                            conn.commit()
+                           # StockEmail(medicinename)
+                            thread2 = threading.Thread(target=StockEmail , args=(medicinename,))     
+                            thread2.start()     
+                            
+                        else:
+                            print('test in')
+                           # sql_update_query = ("update prescriptionmed SET collected = {} where DBid = {}".format(remainingstock, item['dbid']))
+                            sql_update_query = ("update prescriptionstock SET PMedStock = {} where PmedName = '{}'".format(0, medicinename))
+                            conn.execute(sql_update_query)       
+                            conn.commit()
+                            
+                            thread3 = threading.Thread(target=StockEmail , args=(medicinename,))     
+                            thread3.start()  
+                   
+                            
+                        
+                if result[2] != []:
+                    #previous = resilt[1][0]
+                    for medicine_name in result[2]:
+                       #print(medicinename)
+                        print(medicine_name[1])
+                        #conn = sqlite3.connect(db_location) 
+                       # conn = sqlite3.connect(db_location)
+                        
+                        try:
+                            cursor = conn.execute("SELECT * from otcmedicine where medicinename = '{}'".format(medicine_name[0]))
+                            #print('test2')
+                            medicine_list = cursor.fetchall()    #data from database
+                            medstock = int(medicine_list[0][2]) - int(medicine_name[1])
+                            if medstock < 0:
+                                medstock = 0
+                            
+                            
+                            sql_update_query = ("update otcmedicine SET medicinestock = {} where medicinename = '{}'".format(medstock,medicine_name[0]))
+                            
+                            conn.execute(sql_update_query)    
+                           
+                            conn.commit()
+                            
+                            
+                            if int(medstock) < 15:
+                                thread6 = threading.Thread(target=StockEmail , args=(medicine_name[0],))     
+                                thread6.start()   
+                        except:
+                            cursor = conn.execute("SELECT * from prescriptionstock where PmedName = '{}'".format(medicine_name[0]))
+                            #print('test2')
+                            medicine_list = cursor.fetchall()    #data from database
+                            medstock = int(medicine_list[0][4]) - int(medicine_name[1])
+                            if medstock < 0:
+                                medstock = 0
+                            
+                            
+                            sql_update_query = ("update prescriptionstock SET PMedStock = {} where PmedName = '{}'".format(medstock,medicine_name[0]))
+                            
+                            conn.execute(sql_update_query)    
+                           
+                            conn.commit()
+                            
+                            if int(medstock) < 15:
+                                thread7 = threading.Thread(target=StockEmail , args=(medicine_name[0],))     
+                                thread7.start()   
+                                
+                if result[1] != []:
+                    for medicine_name in result[1]:
+                        collection_error = result[1].count(medicine_name)
+                        print(collection_error, 'count')
+                        if collection_error >= 3:
+                            error_flag = True
+                           
+                            
+                            
                 #collection(medicine_list)
                
                 # call function to activate hardware
             conn.close()
+            update_database()
             A3.join()
-            try:
-                t5.join()
-            except:
-                pass
             start_collecting = False
             finish_collecting = True
-            return jsonify('Done')
+            if error_flag == True:
+                print('error')
+                return jsonify('Error')
+            else:
+                print('Done')
+                return jsonify('Done')
     
     
         except Exception as e:
@@ -475,11 +583,138 @@ def updateDBOTC():
         
         
         
+        
+        
+        
+        
+        # try:
+            # cart = medicine_data["cart"]
+           # print(cart)
+            # conn = sqlite3.connect(db_location) 
+            
+            # try:
+                # print(cart[0]['Email'])
+                # for item in cart:
+                    # if item['purchasing'] !=0:
+                        
+                        
+                        # remainingstock = Pdb(item['dbid'], item['purchasing'])
+                        # sql_update_query = ("update prescriptionmed SET collected = {} where DBid = {}".format(remainingstock, item['dbid']))
+                        # conn.execute(sql_update_query)       
+                        # conn.commit()
+                        
+                        
+                        # Premainingstock = Pstock(item['name'], item['purchasing'])
+                        # sql_update_query = ("update prescriptionstock SET PMedStock = {} where PmedName = '{}'".format(Premainingstock, item['name']))
+                        # conn.execute(sql_update_query)       
+                        # conn.commit()
+                        
+                        
+                        # brochure.append(item['name'])
+                        # print(item['name'],item['purchasing'],item['price'],item['Instruction'],item['description'])
+                        # invoice_item.extend([item['name'],item['purchasing'],item['price'],item['description'],item['Instruction'],item['subtotal']])
+                        # print(item['name'],item['purchasing'],item['price'],item['description'])
+                        # invoice_item.extend([item['name'],item['purchasing'],item['price'],item['description'],item['subtotal']])
+                        
+                        # print(remainingstock, 'remainingstock')
+                        # if int(Premainingstock) < 15:
+                            # t2 = threading.Thread(target=StockEmail , args=(item['name'],))     
+                            # t2.start()                  
+                        
+                        # medicine_list.append([item['name'],med_location[item['name']][0],item['purchasing'],med_location[item['name']][1],med_location[item['name']][2]])
+                        
+                    
+                # if (cart[0]['Email']):
+                    # t5 = threading.Thread(target=Pemail , args=(brochure,invoice_item))    
+                    # t5.start()         
+                   # collection(medicine_list)
+                    # t3.join()
+                    
+            # except:
+                # for item in cart:
+                    # remainingstock = otcdb(item['id'], item['quantity'])
+                    # sql_update_query = ("update otcmedicine SET medicinestock = {} where medid = {}".format(remainingstock, item['id']))
+                    # conn.execute(sql_update_query)       
+                    # conn.commit()
+                    
+                    
+                    # print('updated')  
+                    
+                    
+                    # if int(remainingstock) < 15:
+                       # otcStockEmail(item['name'])
+                       # t4 = threading.Thread(target=StockEmail , args=(item['name'],))  
+                       # t4.start()
+                    
+                    # medicine_list.append([item['name'],med_location[item['name']][0],item['quantity'],med_location[item['name']][1],med_location[item['name']][2]])
+                    
+            # if len(medicine_list) != 0:
+                # print(medicine_list)
+                # q = queue.Queue()
+                # A3 = threading.Thread(target=collection , args=(medicine_list,q))    
+                # A3.start()     
+                # print('updated com')  
+                # result = q.get()
+                # print(result)
+                
+                # if result[0] != []:
+                    # for medicinename in result[0]:
+                        # print(medicinename)
+                        # conn = sqlite3.connect(db_location) 
+                        # sql_update_query = ("update otcmedicine SET medicinestock = {} where medicinename = '{}'".format(0,medicinename))
+                        
+                        # conn.execute(sql_update_query)    
+                       
+                        # conn.commit()
+                        
+                # if result[2] != []:
+                    # previous = resilt[1][0]
+                    # for medicine_name in result[2]:
+                       # print(medicinename)
+                        # print(medicine_name[1])
+                        # conn = sqlite3.connect(db_location) 
+                       # conn = sqlite3.connect(db_location)
+                        # cursor = conn.execute("SELECT * from otcmedicine where medicinename = '{}'".format(medicine_name[0]))
+                        # print('test2')
+                        # medicine_list = cursor.fetchall()    #data from database
+                        # medstock = int(medicine_list[0][2]) - int(medicine_name[1])
+                        # if medstock < 0:
+                            # medstock = 0
+                        
+                        
+                        # sql_update_query = ("update otcmedicine SET medicinestock = {} where medicinename = '{}'".format(medstock,medicine_name[0]))
+                        
+                        # conn.execute(sql_update_query)    
+                       
+                        # conn.commit()
+                        
+                # collection(medicine_list)
+               
+                # call function to activate hardware
+            # conn.close()
+            # update_database()
+            # A3.join()
+            # try:
+                # t5.join()
+            # except:
+                # pass
+            # start_collecting = False
+            # finish_collecting = True
+            # return jsonify('Done')
+    
+    
+        # except Exception as e:
+            # print(e)
+            # return('error')
+        
+        
+        
     
         
 
 @app.route('/management/' , methods=["GET","POST"])
 def management():
+    get_database()
     conn = sqlite3.connect(db_location) # need change file location
     cursor = conn.execute("SELECT * from otcmedicine")
     medicine_list = cursor.fetchall()   
@@ -506,25 +741,143 @@ def updatemaindb():
     updatemed = request.get_json()
     print(updatemed)
     conn = sqlite3.connect(db_location) # need change file location
-    
+    medicines = []
     try:
         for item in (updatemed["medicines"]):
             if 'p' not in str(item['id']):
                 sql_update_query = ("update otcmedicine SET medicinestock = {} where medid = {}".format(item['stock'], item['id']))
+                medicines.append({'id': item['id'], 'name' : item['name'], 'stock' :item['stock']})
                 conn.execute(sql_update_query)       
                 conn.commit()
             else:
                 sql_update_query = ("update prescriptionstock SET PMedStock = {} where medid = '{}'".format(item['stock'], item['id']))
+                medicines.append({'id': item['id'], 'name' : item['name'], 'stock' :item['stock']})
                 conn.execute(sql_update_query)       
                 conn.commit()
                 
     except Exception as e:
         print(e)
         return jsonify('false')
-            
+    stockemail(medicines)
+    update_database()        
     return jsonify('done')
                     
- 
+def stockemail(stock):
+    updated_list = []
+    for item in stock:
+        updated_list.extend([item['name'],item['id'], item['stock']])
+    title = 'Cuboid Digital Pharmacy Stock Update'
+    fromaddr = "digitalpharmacy1@gmail.com"
+    toaddr = 'digitalpharmacy1@gmail.com'
+    msg = MIMEMultipart()
+    msg['From'] = fromaddr
+    msg['To'] = toaddr
+    msg['Subject'] = title
+    img = r"http://157.245.196.149/static/images/logoblack.png"
+    now = datetime.datetime.now()
+    item = ''
+    space = ' '
+    line = '-'
+    total = 0
+    for items in range(0,len(updated_list)-1,3):
+        item = item+"{}{}{}{}{}\n{}\n".format(updated_list[items],(22 - len(updated_list[items]))*space,updated_list[items+1],(22 - len(str(updated_list[items+1])))*space,updated_list[items+2],line*60)
+    print(item)
+    body = """\
+    <html>
+    <head>
+    <style>
+    </style>
+    </head>
+        <body>
+            <h2><center><img src='{}'></center></h2>
+            <table border="1", align="center" >
+              <tr>
+                <th width="50%">Medicine Name</th>
+                <th>Medicine ID</th>
+                <th>Medicine Stock</th>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+            </table>
+    """.format(img,updated_list[0],updated_list[1],updated_list[2],updated_list[3],updated_list[4],updated_list[5],
+    updated_list[6],updated_list[7],updated_list[8],updated_list[9],updated_list[10],updated_list[11],updated_list[12],updated_list[13],
+    updated_list[14],updated_list[15],updated_list[16],updated_list[17],updated_list[18],updated_list[19],updated_list[20],
+    updated_list[21],updated_list[22],updated_list[23],updated_list[24],updated_list[25],updated_list[26],updated_list[27],updated_list[28],updated_list[29]
+    ,updated_list[30],updated_list[31],updated_list[32],updated_list[33],updated_list[34],updated_list[35],updated_list[36],updated_list[37],updated_list[38])
+   
+    msg.attach(MIMEText(body, 'html'))
+    
+    server = smtplib.SMTP('smtp.gmail.com', 587)
+    server.ehlo()
+    server.starttls()
+    server.ehlo()
+    server.login("digitalpharmacy1@gmail.com", "Pharmacy1920")
+    text = msg.as_string()
+    server.sendmail(fromaddr, toaddr, text)
+    server.quit()  
 
     
 
