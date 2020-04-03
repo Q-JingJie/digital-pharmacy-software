@@ -329,7 +329,7 @@ def Pemail(brochure, invoice):
     msg['From'] = fromaddr
     msg['To'] = toaddr
     msg['Subject'] = title
-    
+    img = r"http://157.245.196.149/static/images/logoblack.png"
     now = datetime.datetime.now()
     item = ''
     space = ' '
@@ -345,6 +345,8 @@ def Pemail(brochure, invoice):
     body = """\
     <html>
         <body>
+            <h2><center><img src='{}'></center></h2>
+            <br>
             <h2><font size="6">Dear Sir or Madam,</font></h2>
             <h2><font size="6">Thanks for using Cuboid Digital Pharmacy</font></h2>
             <h2><font size="6">Your {}/{}/{} invoice is now available.</font></h2>
@@ -359,7 +361,7 @@ def Pemail(brochure, invoice):
             <h3> You can check out our <a href = #>FAQ</a> or our <a href = #>support page for more information</a>
         </body>
     </html>
-""".format(now.day, now.month, now.year, item,total)
+""".format(img,now.day, now.month, now.year, item,total)
    
    # body = "Dear Sir or Madam,\nThanks for using GoMed\nPlease find attached information leaflets for your medications"
     msg.attach(MIMEText(body, 'html'))
@@ -738,25 +740,122 @@ def updatemaindb():
     updatemed = request.get_json()
     print(updatemed)
     conn = sqlite3.connect(db_location) # need change file location
-    
+    medicines = []
     try:
         for item in (updatemed["medicines"]):
             if 'p' not in str(item['id']):
                 sql_update_query = ("update otcmedicine SET medicinestock = {} where medid = {}".format(item['stock'], item['id']))
+                medicines.append({'id': item['id'], 'name' : item['name'], 'stock' :item['stock']})
                 conn.execute(sql_update_query)       
                 conn.commit()
             else:
                 sql_update_query = ("update prescriptionstock SET PMedStock = {} where medid = '{}'".format(item['stock'], item['id']))
+                medicines.append({'id': item['id'], 'name' : item['name'], 'stock' :item['stock']})
                 conn.execute(sql_update_query)       
                 conn.commit()
                 
     except Exception as e:
         print(e)
         return jsonify('false')
+    stockemail(medicines)
     update_database()        
     return jsonify('done')
                     
- 
+def stockemail(stock):
+    updated_list = []
+    for item in stock:
+        updated_list.extend([item['name'],item['id'], item['stock']])
+    title = 'Cuboid Digital Pharmacy Stock Update'
+    fromaddr = "digitalpharmacy1@gmail.com"
+    toaddr = 'digitalpharmacy1@gmail.com'
+    msg = MIMEMultipart()
+    msg['From'] = fromaddr
+    msg['To'] = toaddr
+    msg['Subject'] = title
+    img = r"http://157.245.196.149/static/images/logoblack.png"
+    now = datetime.datetime.now()
+    item = ''
+    space = ' '
+    line = '-'
+    total = 0
+    for items in range(0,len(updated_list)-1,3):
+        item = item+"{}{}{}{}{}\n{}\n".format(updated_list[items],(22 - len(updated_list[items]))*space,updated_list[items+1],(22 - len(str(updated_list[items+1])))*space,updated_list[items+2],line*60)
+    print(item)
+    body = """\
+    <html>
+    <head>
+    <style>
+    </style>
+    </head>
+        <body>
+            <h2><center><img src='{}'></center></h2>
+            <table border="1", align="center" >
+              <tr>
+                <th width="50%">Medicine Name</th>
+                <th>Medicine ID</th>
+                <th>Medicine Stock</th>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+              <tr>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+                <td><center>{}</center></td>
+              </tr>
+            </table>
+    """.format(img,updated_list[0],updated_list[1],updated_list[2],updated_list[3],updated_list[4],updated_list[5],
+    updated_list[6],updated_list[7],updated_list[8],updated_list[9],updated_list[10],updated_list[11],updated_list[12],updated_list[13],
+    updated_list[14],updated_list[15],updated_list[16],updated_list[17],updated_list[18],updated_list[19],updated_list[20],
+    updated_list[21],updated_list[22],updated_list[23],updated_list[24],updated_list[25],updated_list[26])
+   
+    msg.attach(MIMEText(body, 'html'))
+    
+    server = smtplib.SMTP('smtp.gmail.com', 587)
+    server.ehlo()
+    server.starttls()
+    server.ehlo()
+    server.login("digitalpharmacy1@gmail.com", "Pharmacy1920")
+    text = msg.as_string()
+    server.sendmail(fromaddr, toaddr, text)
+    server.quit()  
 
     
 
