@@ -187,7 +187,7 @@ def securitycode():
     msg['To'] = toaddr
     msg['Subject'] = title
 
-    body = "Your OTP is {}. Use it within 1 minutes before it expires.".format(securityCode)
+    body = "Your OTP is {}. Use it within 1 minutes before it expires. If you have not made this request, please call us at +65 12345678 immediately".format(securityCode)
     msg.attach(MIMEText(body, 'plain'))
 
 
@@ -711,6 +711,7 @@ def updateDBOTC():
 
 @app.route('/management/' , methods=["GET","POST"])
 def management():
+    get_database()
     conn = sqlite3.connect(db_location) # need change file location
     cursor = conn.execute("SELECT * from otcmedicine")
     medicine_list = cursor.fetchall()   
@@ -752,7 +753,7 @@ def updatemaindb():
     except Exception as e:
         print(e)
         return jsonify('false')
-            
+    update_database()        
     return jsonify('done')
                     
  
